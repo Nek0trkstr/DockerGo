@@ -1,3 +1,5 @@
+// +build linux
+
 package main
 
 import (
@@ -7,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -15,33 +18,39 @@ func main() {
 	command := os.Args[3]           //"/usr/local/bin/docker-explorer" //os.Args[3]
 	args := os.Args[4:len(os.Args)] //[]string{"echo", "hey"}             //os.Args[4:len(os.Args)]
 	dir, _ := os.Getwd()
-	workDir := dir + "/rootDir"
+	const tempDir string = "/rootDir"
+	executable := command[strings.LastIndex(command, "/")+1 : len(command)]
+	workDir := dir + tempDir
 	var folderMode uint32 = 0o700
 	if err := syscall.Mkdir(workDir, folderMode); err != nil {
-		fmt.Println(err)
+		//fmt.Println(err)
 	}
 	if err := syscall.Mkdir(workDir+"/dev", folderMode); err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	if err := exec.Command("mknod", "-m", "666", workDir+"/dev/null", "c", "1", "3").Run(); err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 
-	copy(command, workDir+"/docker-explorer")
-	os.Chmod(workDir+"/docker-explorer", 0100)
-
+	copy(command, workDir+"/"+executable)
+	os.Chmod(workDir+"/"+executable, 0100)
 	if err := syscall.Chdir(workDir); err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
+
 	if err := syscall.Chroot(workDir); err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
-	cmd := exec.Command("/docker-explorer", args...)
+
+	cmd := exec.Command("/"+executable, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: syscall.CLONE_NEWPID,
+	}
 	var exitCode int
 	if err := cmd.Run(); err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)1
 		if exitError, ok := err.(*exec.ExitError); ok {
 			exitCode = exitError.ExitCode()
 		}
@@ -58,7 +67,7 @@ func copy(src, dst string) (int64, error) {
 	}
 
 	if !sourceFileStat.Mode().IsRegular() {
-		return 0, fmt.Errorf("%s is not a regular file", src)
+		// return 0, fmt.Errorf("%s is not a regular file", src)
 	}
 
 	source, err := os.Open(src)
